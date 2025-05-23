@@ -1,0 +1,385 @@
+Creating a fully featured, standalone, embeddable AI-powered handicapping widget like EquinEdge or the Enhanced Horse Race Predictor involves integrating complex AI models, real-time data feeds, secure backend APIs, and a user-friendly frontend interface with robust security and input sanitization. Given the complexity and proprietary nature of EquinEdge’s AI models and data, I will provide a comprehensive, modular, secure, and production-ready code bundle outline that can be embedded into any website. This will simulate the core functionality: accepting user input, querying a backend AI prediction API, and displaying data-driven race outcome predictions with security best practices.
+Plan Overview
+
+1. Backend (Node.js + Express):
+
+    Secure REST API to accept race data inputs (e.g., race ID, horses, conditions).
+
+    Input validation and sanitization using express-validator.
+
+    Simulated AI prediction engine (mocked for demonstration) returning probabilistic predictions and betting suggestions.
+
+    Rate limiting and security headers via helmet and express-rate-limit.
+
+    CORS configured for embedding on any domain.
+
+2. Frontend (Vanilla JS + HTML + CSS):
+
+    Responsive, embeddable widget UI for users to input race info and view predictions.
+
+    Input sanitization and validation on client side.
+
+    Fetch API calls to backend with error handling.
+
+    Accessible and styled for embedding in any website.
+
+    Minimal dependencies for easy integration.
+
+3. Security Features:
+
+    Input sanitization and validation (both client and server).
+
+    HTTPS assumed in deployment.
+
+    Helmet for HTTP headers.
+
+    Rate limiting to prevent abuse.
+
+    CORS policy allowing embedding.
+
+    Escape output to prevent XSS.
+
+4. Deployment:
+
+    Bundle backend as a standalone Node.js app.
+
+    Frontend as a single JS+HTML widget that can be embedded via <iframe> or direct script injection.
+Full Integrated Code Bundle
+Backend: server.js
+// server.js - Node.js Express backend for AI handicapping predictions
+
+const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const cors = require('cors');
+const { body, validationResult } = require('express-validator');
+
+const app = express();
+const PORT = process.env.PORT || 4000;
+
+// Middleware
+app.use(helmet());
+app.use(express.json());
+
+// Rate limiter: max 100 requests per 15 minutes per IP
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  message: { error: 'Too many requests, please try again later.' },
+});
+app.use(limiter);
+
+// CORS: Allow all origins for embedding; adjust as needed
+app.use(cors({
+  origin: '*',
+  methods: ['POST'],
+  allowedHeaders: ['Content-Type'],
+}));
+
+// Utility: sanitize string inputs
+function sanitizeString(str) {
+  return str.replace(/[<>\/\\'"]/g, '');
+}
+
+// Mock AI prediction function (replace with real AI model integration)
+function aiPredictRaceOutcome(raceData) {
+  // Simulate prediction probabilities for each horse
+  const horses = raceData.horses;
+  const totalHorses = horses.length;
+  let predictions = horses.map((horse, idx) => {
+    // Simple mock: assign probabilities inversely proportional to index + random noise
+    return {
+      horse: sanitizeString(horse),
+      winProbability: Math.max(0, (1 / (idx + 1)) + (Math.random() * 0.1 - 0.05))
+    };
+  });
+
+  // Normalize probabilities to sum to 1
+  const sumProb = predictions.reduce((sum, p) => sum + p.winProbability, 0);
+  predictions = predictions.map(p => ({
+    horse: p.horse,
+    winProbability: +(p.winProbability / sumProb).toFixed(4)
+  }));
+
+  // Sort descending by winProbability
+  predictions.sort((a, b) => b.winProbability - a.winProbability);
+
+  // Generate a simple betting suggestion based on highest probability
+  const topPick = predictions[0];
+  const betSuggestion = {
+    recommendedBet: 'Win',
+    horse: topPick.horse,
+    confidence: topPick.winProbability
+  };
+
+  return { predictions, betSuggestion };
+}
+
+// API Endpoint: POST /api/predict
+app.post('/api/predict',
+  // Validation and sanitization
+  body('raceId').isString().trim().escape().notEmpty(),
+  body('horses').isArray({ min: 2, max: 20 }),
+  body('horses.*').isString().trim().escape().notEmpty(),
+  body('trackCondition').optional().isString().trim().escape(),
+  body('weather').optional().isString().trim().escape(),
+  (req, res) => {
+    // Validate inputs
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ error: 'Invalid input', details: errors.array() });
+    }
+
+    const { raceId, horses, trackCondition, weather } = req.body;
+
+    // Build race data object
+    const raceData = {
+      raceId: sanitizeString(raceId),
+      horses: horses.map(h => sanitizeString(h)),
+      trackCondition: trackCondition ? sanitizeString(trackCondition) : 'Unknown',
+      weather: weather ? sanitizeString(weather) : 'Unknown'
+    };
+
+    // Call AI prediction engine
+    const result = aiPredictRaceOutcome(raceData);
+
+    res.json({
+      raceId: raceData.raceId,
+      trackCondition: raceData.trackCondition,
+      weather: raceData.weather,
+      predictions: result.predictions,
+      betSuggestion: result.betSuggestion,
+      timestamp: new Date().toISOString()
+    });
+  }
+);
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`EquinEdge AI handicapping API running on port ${PORT}`);
+});
+Frontend: equinedge-widget.html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>EquinEdge AI Handicapping Widget</title>
+  <style>
+    /* Basic styling for embedding */
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0; padding: 1rem;
+      background: #f9f9f9;
+      color: #222;
+    }
+    #widget {
+      max-width: 400px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 0 10px #ccc;
+      padding: 1rem;
+    }
+    h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      color: #004080;
+    }
+    label {
+      display: block;
+      margin-top: 0.5rem;
+      font-weight: bold;
+    }
+    input[type=text], textarea {
+      width: 100%;
+      padding: 0.5rem;
+      margin-top: 0.25rem;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+      font-size: 1rem;
+    }
+    textarea {
+      resize: vertical;
+      height: 80px;
+    }
+    button {
+      margin-top: 1rem;
+      background-color: #004080;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 4px;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #999;
+      cursor: not-allowed;
+    }
+    #results {
+      margin-top: 1rem;
+      background: #eef6ff;
+      border-radius: 6px;
+      padding: 1rem;
+      font-size: 0.95rem;
+      color: #003366;
+    }
+    .error {
+      color: red;
+      margin-top: 0.5rem;
+    }
+    ul.predictions {
+      list-style: none;
+      padding-left: 0;
+    }
+    ul.predictions li {
+      margin-bottom: 0.3rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="widget" role="region" aria-label="EquinEdge AI Horse Race Predictor">
+    <h2>EquinEdge AI Handicapping</h2>
+    <form id="predictionForm" novalidate>
+      <label for="raceId">Race ID:</label>
+      <input type="text" id="raceId" name="raceId" required aria-required="true" maxlength="20" pattern="[A-Za-z0-9\-]+" title="Alphanumeric and dashes only" />
+
+      <label for="horses">Horses (one per line, 2-20 horses):</label>
+      <textarea id="horses" name="horses" required aria-required="true" placeholder="Enter horse names, one per line"></textarea>
+
+      <label for="trackCondition">Track Condition (optional):</label>
+      <input type="text" id="trackCondition" name="trackCondition" maxlength="30" />
+
+      <label for="weather">Weather (optional):</label>
+      <input type="text" id="weather" name="weather" maxlength="30" />
+
+      <button type="submit" id="submitBtn">Get Predictions</button>
+      <div id="formError" class="error" role="alert" aria-live="assertive"></div>
+    </form>
+
+    <div id="results" aria-live="polite" aria-atomic="true" hidden></div>
+  </div>
+
+  <script>
+    (function() {
+      const form = document.getElementById('predictionForm');
+      const resultsDiv = document.getElementById('results');
+      const errorDiv = document.getElementById('formError');
+      const submitBtn = document.getElementById('submitBtn');
+
+      // Sanitize text input to prevent XSS
+      function sanitizeText(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+      }
+
+      // Validate form inputs
+      function validateInputs(raceId, horses) {
+        if (!raceId || !/^[A-Za-z0-9\-]+$/.test(raceId)) {
+          return 'Race ID is required and must be alphanumeric or dashes only.';
+        }
+        if (!horses || horses.length < 2 || horses.length > 20) {
+          return 'Please enter between 2 and 20 horses.';
+        }
+        for (const h of horses) {
+          if (!h.trim()) {
+            return 'Horse names cannot be empty.';
+          }
+          if (h.length > 50) {
+            return 'Horse names must be less than 50 characters.';
+          }
+        }
+        return null;
+      }
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorDiv.textContent = '';
+        resultsDiv.hidden = true;
+        resultsDiv.innerHTML = '';
+
+        const raceId = form.raceId.value.trim();
+        const horsesRaw = form.horses.value.trim();
+        const horses = horsesRaw.split('\n').map(h => h.trim()).filter(h => h.length > 0);
+        const trackCondition = form.trackCondition.value.trim();
+        const weather = form.weather.value.trim();
+
+        const validationError = validateInputs(raceId, horses);
+        if (validationError) {
+          errorDiv.textContent = validationError;
+          return;
+        }
+
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Loading...';
+
+        try {
+          const response = await fetch('https://your-backend-domain.com/api/predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ raceId, horses, trackCondition, weather })
+          });
+
+          if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || 'Server error');
+          }
+
+          const data = await response.json();
+
+          // Build results HTML
+          let html = `<h3>Predictions for Race ${sanitizeText(data.raceId)}</h3>`;
+          html += `<p><strong>Track Condition:</strong> ${sanitizeText(data.trackCondition)}</p>`;
+          html += `<p><strong>Weather:</strong> ${sanitizeText(data.weather)}</p>`;
+          html += '<ul class="predictions">';
+          data.predictions.forEach(p => {
+            html += `<li><strong>${sanitizeText(p.horse)}</strong>: ${(p.winProbability * 100).toFixed(2)}% chance to win</li>`;
+          });
+          html += '</ul>';
+          html += `<p><strong>Recommended Bet:</strong> ${sanitizeText(data.betSuggestion.recommendedBet)} on <em>${sanitizeText(data.betSuggestion.horse)}</em> with confidence ${(data.betSuggestion.confidence * 100).toFixed(2)}%</p>`;
+          html += `<small>Prediction generated at: ${new Date(data.timestamp).toLocaleString()}</small>`;
+
+          resultsDiv.innerHTML = html;
+          resultsDiv.hidden = false;
+        } catch (err) {
+          errorDiv.textContent = `Error: ${sanitizeText(err.message)}`;
+        } finally {
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Get Predictions';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
+How to Use / Embed
+
+    Deploy the backend server.js on a Node.js server with HTTPS enabled.
+
+    Update the frontend fetch URL (https://your-backend-domain.com/api/predict) to your backend endpoint.
+
+    Embed the equinedge-widget.html code as an iframe or directly inject the HTML+JS into any webpage.
+
+    The widget is fully standalone, responsive, and secure with input validation and sanitization on both ends.
+
+Summary
+
+This bundle provides a secure, embeddable AI handicapping widget inspired by EquinEdge’s data-driven approach. It includes:
+
+    Backend API with input validation, sanitization, rate limiting, and CORS.
+
+    Mock AI prediction logic simulating win probabilities and bet suggestions.
+
+    Frontend widget with accessible, sanitized inputs, error handling, and results display.
+
+    Security best practices to prevent XSS, injection, and abuse.
+
+This code can be extended by integrating real AI models and live race data feeds to fully replicate EquinEdge’s advanced functionality
+.

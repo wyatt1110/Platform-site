@@ -1,0 +1,402 @@
+The TurfTrax Tracking System (TTS) provides real-time, highly accurate location data for every horse during races and training by using a proprietary radio frequency (RF) system with lightweight transponder tags worn by horses, a network of receivers around the racecourse, and a central processing server applying patented algorithms to deliver live location, speed, and other metrics multiple times per second
+
+. This system enables broadcasters, betting companies, and racing professionals to access precise, low-latency data for live graphics, analysis, and deep statistical insights beyond traditional timing methods.
+Full Integrated Code Bundle: TurfTrax-Style Real-Time Horse Tracking Widget
+
+Below is a complete, standalone, embeddable widget simulating TurfTrax-style live horse tracking data with:
+
+    Backend: Simulated real-time location data generation, secure REST API with input sanitization, CORS, rate limiting, and security headers.
+
+    Frontend: Responsive, embeddable widget showing live horse positions on a racecourse map, updating multiple times per second.
+
+    Security: Input validation/sanitization, output escaping, rate limiting, CORS, and HTTP security headers.
+
+    Extensibility: Easily replace simulated data with real GNSS/RF input feeds.
+
+Step 1: Backend (server.js)
+// server.js - TurfTrax-style Real-time Horse Tracking Backend (Simulated)
+
+const express = require('express');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const cors = require('cors');
+const { query, validationResult } = require('express-validator');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(helmet());
+app.use(cors({ origin: '*' }));
+
+// Rate limiter: max 200 requests per 1 minute per IP
+const limiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  message: { error: 'Too many requests, please try again later.' },
+});
+app.use(limiter);
+
+// Utility: sanitize string inputs
+function sanitizeString(str) {
+  if (typeof str !== 'string') return '';
+  return str.replace(/[<>\/\\'"]/g, '');
+}
+
+// Simulated racecourse model (simple oval track coordinates)
+const racecourseLength = 1600; // meters
+const trackRadius = 200; // meters for curves
+
+// Simulate horse telemetry data: position (x,y), speed (m/s), timestamp
+// For demo, horses run at constant speed with slight random variation around the track
+function simulateHorseData(horseId, timeElapsedSec) {
+  // Speed between 15 m/s to 18 m/s (~54-65 km/h)
+  const baseSpeed = 16.5 + (Math.sin(horseId * 3.14) * 0.5);
+  const speed = baseSpeed + (Math.random() * 0.5 - 0.25);
+
+  // Distance travelled along track (mod racecourseLength)
+  const distance = (speed * timeElapsedSec) % racecourseLength;
+
+  // Map distance to (x,y) on oval track (simplified)
+  // Oval: two straight lines and two semicircle curves
+  let x, y;
+  if (distance < trackRadius) {
+    // First curve (semicircle)
+    const angle = (distance / trackRadius) * Math.PI;
+    x = trackRadius * Math.cos(angle);
+    y = trackRadius * Math.sin(angle);
+  } else if (distance < trackRadius + 600) {
+    // Straight line
+    x = 0;
+    y = trackRadius + (distance - trackRadius);
+  } else if (distance < 2 * trackRadius + 600) {
+    // Second curve (semicircle)
+    const angle = ((distance - 600 - trackRadius) / trackRadius) * Math.PI;
+    x = -trackRadius * Math.cos(angle);
+    y = trackRadius + 600 - trackRadius * Math.sin(angle);
+  } else {
+    // Other straight line
+    x = 0;
+    y = racecourseLength - distance;
+  }
+
+  return {
+    horseId,
+    timestamp: Date.now(),
+    position: { x: +x.toFixed(2), y: +y.toFixed(2) },
+    speed: +speed.toFixed(2),
+  };
+}
+
+// API Endpoint: GET /api/live_positions?raceId=xxx&timestamp=yyy
+// Returns positions of horses in the race at given timestamp (or current time)
+app.get('/api/live_positions', [
+  query('raceId').isString().trim().isLength({ min: 1, max: 20 }).escape(),
+  query('timestamp').optional().isInt({ min: 0 }),
+], (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ error: 'Invalid query parameters', details: errors.array() });
+  }
+
+  const raceId = sanitizeString(req.query.raceId);
+  const timestamp = req.query.timestamp ? parseInt(req.query.timestamp, 10) : Date.now();
+
+  // For demo, simulate 10 horses with IDs 1-10
+  const raceStartTime = timestamp - 30000; // race started 30 seconds ago
+  const elapsedSec = (timestamp - raceStartTime) / 1000;
+
+  const horsesData = [];
+  for (let horseId = 1; horseId <= 10; horseId++) {
+    horsesData.push(simulateHorseData(horseId, elapsedSec));
+  }
+
+  res.json({
+    raceId,
+    timestamp,
+    horses: horsesData,
+  });
+});
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+app.listen(PORT, () => {
+  console.log(`TurfTrax-style Tracking API running on port ${PORT}`);
+});
+Step 2: Frontend Widget (turfftrax-widget.html)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>TurfTrax Real-Time Horse Tracking Widget</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    margin: 0; padding: 1rem;
+    background: #f0f4f8;
+    color: #222;
+  }
+  #widget {
+    max-width: 500px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 0 12px #aaa;
+    padding: 1rem;
+  }
+  h2 {
+    margin-top: 0;
+    color: #004080;
+  }
+  label {
+    display: block;
+    margin-top: 0.5rem;
+    font-weight: bold;
+  }
+  input[type=text] {
+    width: 100%;
+    padding: 0.4rem;
+    margin-top: 0.25rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+  button {
+    margin-top: 1rem;
+    background-color: #004080;
+    color: white;
+    border: none;
+    padding: 0.6rem 1.2rem;
+    border-radius: 4px;
+    font-size: 1rem;
+    cursor: pointer;
+  }
+  button:disabled {
+    background-color: #999;
+    cursor: not-allowed;
+  }
+  #error {
+    color: red;
+    margin-top: 0.5rem;
+  }
+  #trackCanvas {
+    margin-top: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #e0f0ff;
+    width: 100%;
+    height: 300px;
+  }
+  #legend {
+    margin-top: 0.5rem;
+    font-size: 0.9rem;
+  }
+  .horse-label {
+    font-weight: bold;
+    font-size: 0.85rem;
+  }
+</style>
+</head>
+<body>
+<div id="widget" role="region" aria-label="TurfTrax Real-Time Horse Tracking">
+  <h2>TurfTrax Horse Tracking</h2>
+  <label for="raceIdInput">Race ID:</label>
+  <input type="text" id="raceIdInput" maxlength="20" pattern="[A-Za-z0-9\-]+" title="Alphanumeric and dashes only" aria-required="true" />
+  <button id="startBtn">Start Tracking</button>
+  <div id="error" role="alert" aria-live="assertive"></div>
+
+  <canvas id="trackCanvas" width="480" height="300" aria-label="Racecourse map showing live horse positions"></canvas>
+  <div id="legend" aria-live="polite" aria-atomic="true"></div>
+</div>
+
+<script>
+  (function() {
+    const raceIdInput = document.getElementById('raceIdInput');
+    const startBtn = document.getElementById('startBtn');
+    const errorDiv = document.getElementById('error');
+    const canvas = document.getElementById('trackCanvas');
+    const ctx = canvas.getContext('2d');
+    const legendDiv = document.getElementById('legend');
+
+    let tracking = false;
+    let intervalId = null;
+
+    // Sanitize text to prevent XSS
+    function sanitizeText(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    // Validate race ID
+    function validateRaceId(raceId) {
+      return /^[A-Za-z0-9\-]{1,20}$/.test(raceId);
+    }
+
+    // Draw oval racecourse track on canvas
+    function drawTrack() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#a0c4ff';
+      ctx.strokeStyle = '#004080';
+      ctx.lineWidth = 3;
+
+      // Oval track: two straight lines and two semicircles
+      const centerX = canvas.width / 2;
+      const centerY = canvas.height / 2;
+      const radiusX = 180;
+      const radiusY = 100;
+
+      ctx.beginPath();
+      // Left semicircle
+      ctx.ellipse(centerX - radiusX / 2, centerY, radiusY, radiusX / 2, Math.PI / 2, Math.PI * 1.5, false);
+      // Right semicircle
+      ctx.ellipse(centerX + radiusX / 2, centerY, radiusY, radiusX / 2, Math.PI * 1.5, Math.PI / 2, false);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Map horse (x,y) to canvas coordinates
+    function mapToCanvasCoords(x, y) {
+      // x,y in meters, origin at track center (0,0)
+      // Scale meters to pixels (approx)
+      const scaleX = 1.0; // 1 meter = 1 pixel approx for demo
+      const scaleY = 1.0;
+
+      // Canvas center
+      const cx = canvas.width / 2;
+      const cy = canvas.height / 2;
+
+      // Flip y-axis for canvas (y up)
+      return {
+        x: cx + x * scaleX,
+        y: cy - y * scaleY
+      };
+    }
+
+    // Draw horses on track
+    function drawHorses(horses) {
+      drawTrack();
+
+      horses.forEach(horse => {
+        const pos = mapToCanvasCoords(horse.position.x, horse.position.y);
+        ctx.beginPath();
+        ctx.fillStyle = `hsl(${(horse.horseId * 36) % 360}, 80%, 50%)`;
+        ctx.strokeStyle = '#003366';
+        ctx.lineWidth = 1.5;
+        ctx.arc(pos.x, pos.y, 8, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = '#000';
+        ctx.font = '12px Arial';
+        ctx.textAlign = 'center';
+        ctx.fillText(`H${horse.horseId}`, pos.x, pos.y - 12);
+      });
+
+      // Update legend
+      legendDiv.innerHTML = horses.map(h => `<span class="horse-label" style="color:hsl(${(h.horseId * 36) % 360}, 80%, 50%)">H${h.horseId}</span>: Speed ${h.speed} m/s`).join(' | ');
+    }
+
+    async function fetchPositions(raceId) {
+      try {
+        const url = new URL('https://your-backend-domain.com/api/live_positions');
+        url.searchParams.append('raceId', raceId);
+
+        const response = await fetch(url.toString());
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Server error');
+        }
+
+        const data = await response.json();
+        return data.horses;
+      } catch (err) {
+        throw err;
+      }
+    }
+
+    async function startTracking() {
+      const raceId = raceIdInput.value.trim();
+      errorDiv.textContent = '';
+
+      if (!validateRaceId(raceId)) {
+        errorDiv.textContent = 'Race ID is required and must be alphanumeric or dashes only (max 20 chars).';
+        return;
+      }
+
+      startBtn.disabled = true;
+      startBtn.textContent = 'Tracking...';
+      tracking = true;
+
+      drawTrack();
+
+      try {
+        while (tracking) {
+          const horses = await fetchPositions(raceId);
+          drawHorses(horses);
+          await new Promise(r => setTimeout(r, 250)); // update ~4x per second
+        }
+      } catch (err) {
+        errorDiv.textContent = `Error: ${sanitizeText(err.message)}`;
+      } finally {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Start Tracking';
+      }
+    }
+
+    startBtn.addEventListener('click', () => {
+      if (!tracking) {
+        startTracking();
+      }
+    });
+
+  })();
+</script>
+</body>
+</html>
+How to Use / Deploy
+
+    Backend:
+
+        Deploy server.js on a Node.js server with HTTPS enabled.
+
+        Replace 'https://your-backend-domain.com/api/live_positions' in frontend with your backend URL.
+
+        Adjust CORS policy in backend as needed.
+
+    Frontend:
+
+        Embed the entire turfftrax-widget.html content as an iframe or inline HTML + JS snippet on any webpage.
+
+        Users enter a race ID and start live tracking. The widget shows a simplified oval track with colored dots representing horses updating in real-time.
+
+Features & Security
+
+    Real-time updates at ~4 times per second simulating TurfTrax’s low-latency data.
+
+    Input validation and sanitization on both backend and frontend prevent injection attacks.
+
+    Rate limiting and security headers protect backend from abuse.
+
+    Accessible UI with ARIA roles and live regions for screen readers.
+
+    Extensible simulation easily replaced with real GNSS/RF data feeds.
+
+    Output escaping prevents XSS in displayed data.
+
+Summary
+
+This bundle simulates the TurfTrax Tracking System’s core functionality:
+
+    Real-time, highly accurate horse location and speed data streaming.
+
+    Live graphical display of horse positions on a racecourse map.
+
+    Secure, embeddable widget suitable for broadcasters, betting, and racing professionals.
+
+You can extend this by integrating actual GNSS/RF hardware data streams into the backend’s data generation logic, and enhance the frontend with richer graphics and analytics.
+If you want me to help with packaging, deployment scripts, or integration with real TurfTrax or TRACAB data sources, just ask!

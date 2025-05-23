@@ -1,0 +1,756 @@
+Below is a refactored, improved React component for the Expected Value (EV) and Risk Management calculator widget, addressing all the points you raised:
+
+    Stricter input validation with numeric inputs, min/max, and better UX
+
+    Error boundaries to catch unexpected errors gracefully
+
+    Unit tests examples using React Testing Library and Jest (you can expand them)
+
+    Improved Risk of Ruin calculation with input clamping and error handling
+
+    Better UX polish: numeric keyboards, clearer error messages, keyboard-friendly tooltips, and focus management
+
+    Performance optimization: memoized chart data generation
+
+    Accessible, responsive, and styled with CSS-in-JS
+
+1. Error Boundary Component
+
+Create this once in your project to wrap your widget:
+import React from "react";
+
+export class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  componentDidCatch(error, errorInfo) {
+    // Log error to external service if needed
+    console.error("ErrorBoundary caught:", error, errorInfo);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div role="alert" style={{ padding: 20, backgroundColor: "#fdd", color: "#900" }}>
+          <h2>Something went wrong.</h2>
+          <pre>{this.state.error?.toString()}</pre>
+          <button onClick={() => this.setState({ hasError: false, error: null })}>
+            Try Again
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+2. Refactored EV + Risk Management Calculator Widget
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  Legend,
+} from "recharts";
+
+// Helper: sanitize and parse number with stricter rules
+function parsePositiveNumber(value) {
+  if (typeof value !== "string") return NaN;
+  const num = Number(value.trim());
+  if (isNaN(num) || num <= 0) return NaN;
+  return num;
+}
+
+// Clamp function to keep values within bounds
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+// Accessible Tooltip for help icons
+function HelpTooltip({ text }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span
+      tabIndex={0}
+      aria-label={text}
+      role="tooltip"
+      onFocus={() => setVisible(true)}
+      onBlur={() => setVisible(false)}
+      onMouseEnter={() => setVisible(true)}
+      onMouseLeave={() => setVisible(false)}
+      style={{ position: "relative", cursor: "help", marginLeft: 6, color: "var(--color-help)" }}
+    >
+      ℹ️
+      {visible && (
+        <div
+          role="tooltip"
+          style={{
+            position: "absolute",
+            top: "125%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            backgroundColor: "var(--color-tooltip-bg)",
+            color: "var(--color-tooltip-text)",
+            padding: "0.4em 0.6em",
+            borderRadius: 4,
+            fontSize: "0.85rem",
+            whiteSpace: "nowrap",
+            zIndex: 10,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          }}
+        >
+          {text}
+        </div>
+      )}
+    </span>
+  );
+}
+
+export default function EvRiskCalculator() {
+  const [betAmount, setBetAmount] = useState("");
+  const [probWin, setProbWin] = useState("");
+  const [decimalOdds, setDecimalOdds] = useState("");
+  const [bankroll, setBankroll] = useState("");
+  const [betSize, setBetSize] = useState("");
+
+  const [errors, setErrors] = useState({});
+
+  const evResultRef = useRef(null);
+  const riskResultRef = useRef(null);
+
+  // Validate inputs and compute results
+  const {
+    ev,
+    expectedGain,
+    expectedLoss,
+    evMessage,
+    kellyFraction,
+    riskOfRuin,
+    riskMessage,
+  } = useMemo(() => {
+    const newErrors = {};
+
+    const betAmtNum = parsePositiveNumber(betAmount);
+    const probWinNum = Number(probWin.trim());
+    const decOddsNum = Number(decimalOdds.trim());
+    const bankrollNum = parsePositiveNumber(bankroll);
+    const betSizeNum = parsePositiveNumber(betSize);
+
+    // Validation
+    if (betAmount !== "" && isNaN(betAmtNum)) {
+      newErrors.betAmount = "Enter a positive number for Bet Amount.";
+    }
+    if (
+      probWin !== "" &&
+      (isNaN(probWinNum) || probWinNum < 0 || probWinNum > 100)
+    ) {
+      newErrors.probWin = "Enter a probability between 0 and 100.";
+    }
+    if (decimalOdds !== "" && (isNaN(decOddsNum) || decOddsNum < 1)) {
+      newErrors.decimalOdds = "Decimal odds must be ≥ 1.";
+    }
+    if (bankroll !== "" && isNaN(bankrollNum)) {
+      newErrors.bankroll = "Enter a positive number for Bankroll.";
+    }
+    if (
+      betSize !== "" &&
+      (isNaN(betSizeNum) || (bankrollNum && betSizeNum > bankrollNum))
+    ) {
+      newErrors.betSize =
+        "Bet Size must be positive and not exceed your Bankroll.";
+    }
+
+    setErrors(newErrors);
+
+    // Early return if errors exist
+    if (Object.keys(newErrors).length > 0) {
+      return {
+        ev: null,
+        expectedGain: null,
+        expectedLoss: null,
+        evMessage: "",
+        kellyFraction: null,
+        riskOfRuin: null,
+        riskMessage: "",
+      };
+    }
+
+    // EV calculation
+    let evCalc = null,
+      expGain = null,
+      expLoss = null,
+      evMsg = "";
+    if (
+      betAmtNum !== undefined &&
+      !isNaN(betAmtNum) &&
+      probWinNum !== undefined &&
+      !isNaN(probWinNum) &&
+      decOddsNum !== undefined &&
+      !isNaN(decOddsNum)
+    ) {
+      const payout = betAmtNum * (decOddsNum - 1);
+      const probLossNum = 100 - probWinNum;
+      evCalc = (probWinNum / 100) * payout - (probLossNum / 100) * betAmtNum;
+      expGain = (probWinNum / 100) * payout;
+      expLoss = (probLossNum / 100) * betAmtNum;
+      evMsg =
+        evCalc > 0
+          ? "Positive expected value - this bet is profitable in the long run."
+          : evCalc === 0
+          ? "Neutral expected value - break-even bet."
+          : "Negative expected value - this bet is expected to lose money over time.";
+    }
+
+    // Risk management calculation
+    let kelly = null,
+      riskRuin = null,
+      riskMsg = "";
+    if (
+      bankrollNum !== undefined &&
+      !isNaN(bankrollNum) &&
+      betSizeNum !== undefined &&
+      !isNaN(betSizeNum) &&
+      probWinNum !== undefined &&
+      !isNaN(probWinNum) &&
+      decOddsNum !== undefined &&
+      !isNaN(decOddsNum)
+    ) {
+      const b = decOddsNum - 1;
+      const p = probWinNum / 100;
+      const q = 1 - p;
+      kelly = (b * p - q) / b;
+
+      // Clamp Kelly fraction between 0 and 1 for sanity
+      kelly = clamp(kelly, 0, 1);
+
+      const f = betSizeNum / bankrollNum;
+      if (f <= 0) {
+        riskMsg = "Bet size must be positive.";
+      } else if (f > 1) {
+        riskMsg = "Bet size cannot exceed bankroll.";
+      } else {
+        // Risk of ruin approximation with clamping
+        const base = (1 - f * kelly) / (1 + f * b);
+        if (base <= 0) {
+          riskRuin = 1; // Certain ruin
+        } else {
+          riskRuin = Math.pow(base, bankrollNum / betSizeNum);
+          riskRuin = clamp(riskRuin, 0, 1);
+        }
+
+        if (kelly <= 0) {
+          riskMsg = "Kelly fraction ≤ 0: Bet is not favorable. Avoid this bet.";
+        } else if (f > kelly) {
+          riskMsg =
+            "Your bet size exceeds the Kelly fraction, increasing risk of ruin.";
+        } else if (riskRuin < 0.01) {
+          riskMsg = "Low risk of ruin with your current bet size.";
+        } else {
+          riskMsg = `Estimated risk of ruin: ${(riskRuin * 100).toFixed(2)}%.`;
+        }
+      }
+    }
+
+    return {
+      ev: evCalc,
+      expectedGain: expGain,
+      expectedLoss: expLoss,
+      evMessage: evMsg,
+      kellyFraction: kelly,
+      riskOfRuin: riskRuin,
+      riskMessage: riskMsg,
+    };
+  }, [betAmount, probWin, decimalOdds, bankroll, betSize]);
+
+  // Focus management on result update
+  useEffect(() => {
+    if (ev !== null && evResultRef.current) evResultRef.current.focus();
+  }, [ev]);
+
+  useEffect(() => {
+    if (kellyFraction !== null && riskResultRef.current) riskResultRef.current.focus();
+  }, [kellyFraction]);
+
+  // Chart data memoization
+  const evChartData = useMemo(() => {
+    if (ev === null) return [];
+    return [
+      { name: "Expected Gain", value: expectedGain || 0, fill: "var(--color-ev-gain)" },
+      { name: "Expected Loss", value: expectedLoss || 0, fill: "var(--color-ev-loss)" },
+    ];
+  }, [ev, expectedGain, expectedLoss]);
+
+  const riskChartData = useMemo(() => {
+    const data = [];
+    const bankrollNum = parsePositiveNumber(bankroll);
+    const decOddsNum = Number(decimalOdds);
+    const probWinNum = Number(probWin);
+    if (
+      bankrollNum > 0 &&
+      decOddsNum >= 1 &&
+      probWinNum >= 0 &&
+      probWinNum <= 100
+    ) {
+      const b = decOddsNum - 1;
+      const p = probWinNum / 100;
+      const q = 1 - p;
+      let kelly = (b * p - q) / b;
+      kelly = clamp(kelly, 0, 1);
+      for (let f = 0.01; f <= 1; f += 0.01) {
+        const base = (1 - f * kelly) / (1 + f * b);
+        let ruin = 1;
+        if (base > 0) {
+          ruin = Math.pow(base, bankrollNum / (bankrollNum * f));
+          ruin = clamp(ruin, 0, 1);
+        }
+        data.push({ fraction: (f * 100).toFixed(0), risk: ruin });
+      }
+    }
+    return data;
+  }, [bankroll, decimalOdds, probWin]);
+
+  return (
+    <main
+      style={{
+        maxWidth: 600,
+        margin: "auto",
+        fontFamily: "'Arial', sans-serif",
+        backgroundColor: "var(--color-bg, #f8f9fa)",
+        borderRadius: 8,
+        padding: "1em 1.5em",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        color: "var(--color-text, #2b3a4a)",
+      }}
+      aria-label="Expected Value and Risk Management Calculator"
+    >
+      <h1 style={{ textAlign: "center" }}>
+        Expected Value & Risk Management Calculator
+      </h1>
+
+      {/* Expected Value Section */}
+      <section aria-labelledby="ev-section" style={{ marginBottom: "2em" }}>
+        <h2 id="ev-section" style={{ marginBottom: "0.5em" }}>
+          Expected Value Calculator
+        </h2>
+        <form onSubmit={(e) => e.preventDefault()} noValidate>
+          <label style={labelStyle}>
+            Bet Amount (£):
+            <HelpTooltip text="The amount of money you plan to bet." />
+            <input
+              id="betAmount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={betAmount}
+              onChange={(e) => setBetAmount(e.target.value)}
+              aria-invalid={errors.betAmount ? "true" : "false"}
+              aria-describedby="betAmount-error"
+              style={inputStyle}
+              placeholder="e.g. 10"
+              inputMode="decimal"
+            />
+          </label>
+          {errors.betAmount && (
+            <span id="betAmount-error" role="alert" style={errorStyle}>
+              {errors.betAmount}
+            </span>
+          )}
+
+          <label style={labelStyle}>
+            Probability of Winning (%):
+            <HelpTooltip text="Your estimated chance of winning the bet, from 0 to 100%." />
+            <input
+              id="probWin"
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={probWin}
+              onChange={(e) => setProbWin(e.target.value)}
+              aria-invalid={errors.probWin ? "true" : "false"}
+              aria-describedby="probWin-error"
+              style={inputStyle}
+              placeholder="e.g. 45"
+              inputMode="decimal"
+            />
+          </label>
+          {errors.probWin && (
+            <span id="probWin-error" role="alert" style={errorStyle}>
+              {errors.probWin}
+            </span>
+          )}
+
+          <label style={labelStyle}>
+            Decimal Odds (≥ 1):
+            <HelpTooltip text="The decimal odds offered for the bet. For example, 2.5 means you win 2.5 times your stake." />
+            <input
+              id="decimalOdds"
+              type="number"
+              min="1"
+              step="0.01"
+              value={decimalOdds}
+              onChange={(e) => setDecimalOdds(e.target.value)}
+              aria-invalid={errors.decimalOdds ? "true" : "false"}
+              aria-describedby="decimalOdds-error"
+              style={inputStyle}
+              placeholder="e.g. 2.5"
+              inputMode="decimal"
+            />
+          </label>
+          {errors.decimalOdds && (
+            <span id="decimalOdds-error" role="alert" style={errorStyle}>
+              {errors.decimalOdds}
+            </span>
+          )}
+        </form>
+
+        {/* EV Results */}
+        <div
+          tabIndex={-1}
+          ref={evResultRef}
+          aria-live="polite"
+          aria-atomic="true"
+          style={{ marginTop: "1em", minHeight: "4em" }}
+        >
+          {ev !== null && (
+            <>
+              <p>
+                <strong>Expected Value (EV): </strong>£{ev.toFixed(2)}
+              </p>
+              <p>{evMessage}</p>
+            </>
+          )}
+        </div>
+
+        {/* EV Bar Chart */}
+        {evChartData.length > 0 && (
+          <div style={{ width: "100%", height: 200, marginTop: 20 }}>
+            <ResponsiveContainer>
+              <BarChart
+                data={evChartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                aria-label="Bar chart showing expected gain and expected loss"
+              >
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip formatter={(value) => `£${value.toFixed(2)}`} />
+                <Bar dataKey="value" fill="#8884d8" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+
+      <hr />
+
+      {/* Risk Management Section */}
+      <section aria-labelledby="risk-section" style={{ marginTop: "2em" }}>
+        <h2 id="risk-section" style={{ marginBottom: "0.5em" }}>
+          Risk Management Calculator
+        </h2>
+        <form onSubmit={(e) => e.preventDefault()} noValidate>
+          <label style={labelStyle}>
+            Bankroll (£):
+            <HelpTooltip text="The total amount of money you have available for betting." />
+            <input
+              id="bankroll"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={bankroll}
+              onChange={(e) => setBankroll(e.target.value)}
+              aria-invalid={errors.bankroll ? "true" : "false"}
+              aria-describedby="bankroll-error"
+              style={inputStyle}
+              placeholder="e.g. 500"
+              inputMode="decimal"
+            />
+          </label>
+          {errors.bankroll && (
+            <span id="bankroll-error" role="alert" style={errorStyle}>
+              {errors.bankroll}
+            </span>
+          )}
+
+          <label style={labelStyle}>
+            Bet Size (£):
+            <HelpTooltip text="The amount you plan to bet each time." />
+            <input
+              id="betSize"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={betSize}
+              onChange={(e) => setBetSize(e.target.value)}
+              aria-invalid={errors.betSize ? "true" : "false"}
+              aria-describedby="betSize-error"
+              style={inputStyle}
+              placeholder="e.g. 10"
+              inputMode="decimal"
+            />
+          </label>
+          {errors.betSize && (
+            <span id="betSize-error" role="alert" style={errorStyle}>
+              {errors.betSize}
+            </span>
+          )}
+        </form>
+
+        {/* Risk Results */}
+        <div
+          tabIndex={-1}
+          ref={riskResultRef}
+          aria-live="polite"
+          aria-atomic="true"
+          style={{ marginTop: "1em", minHeight: "4em" }}
+        >
+          {kellyFraction !== null && (
+            <>
+              <p>
+                <strong>Kelly Criterion Fraction: </strong>
+                {(kellyFraction * 100).toFixed(2)}%
+              </p>
+              {riskOfRuin !== null && riskOfRuin >= 0 && (
+                <p>
+                  <strong>Estimated Risk of Ruin: </strong>
+                  {(riskOfRuin * 100).toFixed(2)}%
+                </p>
+              )}
+              <p>{riskMessage}</p>
+            </>
+          )}
+        </div>
+
+        {/* Risk of Ruin Line Chart */}
+        {riskChartData.length > 0 && (
+          <div style={{ width: "100%", height: 250, marginTop: 20 }}>
+            <ResponsiveContainer>
+              <LineChart
+                data={riskChartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                aria-label="Line chart showing risk of ruin versus bet size fraction"
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis
+                  dataKey="fraction"
+                  label={{
+                    value: "Bet Size (% of Bankroll)",
+                    position: "insideBottomRight",
+                    offset: -5,
+                  }}
+                />
+                <YAxis
+                  domain={[0, 1]}
+                  tickFormatter={(tick) => `${(tick * 100).toFixed(0)}%`}
+                  label={{
+                    value: "Risk of Ruin",
+                    angle: -90,
+                    position: "insideLeft",
+                    offset: 10,
+                  }}
+                />
+                <Tooltip
+                  formatter={(value) => `${(value * 100).toFixed(2)}%`}
+                  labelFormatter={(label) => `Bet Size: ${label}%`}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="risk"
+                  stroke="#dc3545"
+                  strokeWidth={2}
+                  dot={false}
+                  name="Risk of Ruin"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}
+
+const labelStyle = {
+  display: "block",
+  marginTop: 10,
+  fontWeight: "bold",
+};
+
+const inputStyle = {
+  marginLeft: "0.5em",
+  padding: "0.3em",
+  fontSize: "1rem",
+  borderRadius: 4,
+  border: "1px solid var(--color-input-border, #ccc)",
+  backgroundColor: "var(--color-input-bg, #fff)",
+  color: "var(--color-text, #000)",
+  width: "6em",
+};
+
+const errorStyle = {
+  color: "#dc3545",
+  fontSize: "0.9rem",
+  marginLeft: "0.5em",
+};
+3. Example Unit Tests (Using React Testing Library & Jest)
+
+Save as EvRiskCalculator.test.jsx or similar:
+import React from "react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import EvRiskCalculator from "./EvRiskCalculator";
+
+describe("EvRiskCalculator", () => {
+  test("renders input fields", () => {
+    render(<EvRiskCalculator />);
+    expect(screen.getByLabelText(/Bet Amount/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Probability of Winning/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Decimal Odds/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bankroll/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bet Size/i)).toBeInTheDocument();
+  });
+
+  test("shows error for invalid bet amount", () => {
+    render(<EvRiskCalculator />);
+    const betAmountInput = screen.getByLabelText(/Bet Amount/i);
+    fireEvent.change(betAmountInput, { target: { value: "-10" } });
+    expect(screen.getByText(/positive number/i)).toBeInTheDocument();
+  });
+
+  test("calculates expected value correctly", () => {
+    render(<EvRiskCalculator />);
+    fireEvent.change(screen.getByLabelText(/Bet Amount/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/Probability of Winning/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Decimal Odds/i), { target: { value: "2" } });
+    expect(screen.findByText(/Expected Value/i)).resolves.toHaveTextContent("Expected Value (EV): £0.00");
+  });
+
+  test("calculates Kelly fraction and risk of ruin", () => {
+    render(<EvRiskCalculator />);
+    fireEvent.change(screen.getByLabelText(/Bankroll/i), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText(/Bet Size/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Probability of Winning/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Decimal Odds/i), { target: { value: "2" } });
+    expect(screen.findByText(/Kelly Criterion Fraction/i)).resolves.toBeInTheDocument();
+    expect(screen.findByText(/Risk of Ruin/i)).resolves.toBeInTheDocument();
+  });
+});
+import React from "react";
+import { render, screen, fireEvent } from "@testing-library/react";
+import EvRiskCalculator from "./EvRiskCalculator";
+
+describe("EvRiskCalculator", () => {
+  test("renders input fields", () => {
+    render(<EvRiskCalculator />);
+    expect(screen.getByLabelText(/Bet Amount/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Probability of Winning/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Decimal Odds/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bankroll/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Bet Size/i)).toBeInTheDocument();
+  });
+
+  test("shows error for invalid bet amount", () => {
+    render(<EvRiskCalculator />);
+    const betAmountInput = screen.getByLabelText(/Bet Amount/i);
+    fireEvent.change(betAmountInput, { target: { value: "-10" } });
+    expect(screen.getByText(/positive number/i)).toBeInTheDocument();
+  });
+
+  test("calculates expected value correctly", () => {
+    render(<EvRiskCalculator />);
+    fireEvent.change(screen.getByLabelText(/Bet Amount/i), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText(/Probability of Winning/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Decimal Odds/i), { target: { value: "2" } });
+    expect(screen.findByText(/Expected Value/i)).resolves.toHaveTextContent("Expected Value (EV): £0.00");
+  });
+
+  test("calculates Kelly fraction and risk of ruin", () => {
+    render(<EvRiskCalculator />);
+    fireEvent.change(screen.getByLabelText(/Bankroll/i), { target: { value: "1000" } });
+    fireEvent.change(screen.getByLabelText(/Bet Size/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Probability of Winning/i), { target: { value: "50" } });
+    fireEvent.change(screen.getByLabelText(/Decimal Odds/i), { target: { value: "2" } });
+    expect(screen.findByText(/Kelly Criterion Fraction/i)).resolves.toBeInTheDocument();
+    expect(screen.findByText(/Risk of Ruin/i)).resolves.toBeInTheDocument();
+  });
+});
+4. Usage
+
+Wrap your calculator in the ErrorBoundary component in your app:
+import React from "react";
+import EvRiskCalculator from "./EvRiskCalculator";
+import { ErrorBoundary } from "./ErrorBoundary";
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <EvRiskCalculator />
+    </ErrorBoundary>
+  );
+}
+Summary
+
+    Stricter, user-friendly validation with numeric inputs
+
+    Error boundaries to catch and display errors gracefully
+
+    Memoized calculations for performance
+
+    Accessible tooltips and focus management
+
+    Unit tests to verify core functionality
+
+    Improved risk of ruin calculation with clamping and input checks
+If you want, I can help you with:
+
+    Packaging this as a standalone bundle (Create React App or Vite)
+
+    Adding dark mode toggle and theming again
+
+    Deploy scripts or embedding instructions
+
+Just let me know
+
+Your React component demonstrates good frontend validation, error handling, and accessibility features, but when it comes to security—especially in web applications—it's important to recognize the scope of frontend code:
+
+**Frontend Security Considerations:**
+
+- **Input Validation:**  
+  You perform strict input validation on the client side, which helps prevent accidental or malicious incorrect data entry. This includes numeric validation, clamping, and error messages.
+
+- **Error Boundaries:**  
+  Error boundaries prevent the entire app from crashing due to unexpected runtime errors, improving user experience but do not provide security protections.
+
+- **Accessibility & UX:**  
+  Enhances usability but doesn't impact security.
+
+**However, frontend code alone cannot ensure complete security:**
+
+- **Data Validation & Sanitization:**  
+  All critical validation and sanitization should also occur on the server side. Client-side validation can be bypassed by malicious users or scripts.
+
+- **Data Transmission:**  
+  Ensure data sent from and to the backend uses secure protocols (HTTPS) to prevent interception.
+
+- **Authentication & Authorization:**  
+  Your code doesn't include any auth mechanisms. If integrated into a larger app, you'd need secure user authentication and permission checks.
+
+- **Protection Against Attacks:**  
+  Frontend code doesn't protect against CSRF, XSS, or injection attacks, which must be handled on the server.
+
+- **Dependency Security:**  
+  Ensure that libraries like React, Recharts, and testing tools are kept up to date and sourced from trusted repositories.
+
+**Summary:**  
+While your React component has good practices for input validation and error handling, **it does not inherently include security features** like server-side validation, authentication, data encryption, or protection against common web vulnerabilities. Those aspects must be handled separately on your backend and infrastructure.
+
+**Bottom line:**  
+Use frontend validation as a first line of defense, but always implement comprehensive security measures on your server and infrastructure to protect data and users fully.

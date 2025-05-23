@@ -1,0 +1,465 @@
+Certainly! Below is an enhanced version of the standalone horse racing historical search widget that includes:
+
+    Saving and loading searches locally in the browser
+
+    Additional filters: Trainer and Jockey
+
+    Extended backend to support caching results in memory and querying by trainer and jockey
+
+    Support for multiple API endpoints (e.g., races and runners)
+
+    Secure input validation and sanitization
+
+1. Frontend Widget (HTML + CSS + JS)
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Horse Racing Historical Search</title>
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    max-width: 650px;
+    margin: 20px auto;
+    background: #f9f9f9;
+    color: #222;
+  }
+  h1 {
+    text-align: center;
+    color: #004080;
+  }
+  form {
+    background: white;
+    padding: 15px;
+    border-radius: 6px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+  }
+  label {
+    display: block;
+    margin-top: 12px;
+    font-weight: bold;
+  }
+  input, button {
+    width: 100%;
+    padding: 8px;
+    margin-top: 6px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    font-size: 1rem;
+    box-sizing: border-box;
+  }
+  button {
+    background-color: #004080;
+    color: white;
+    border: none;
+    margin-top: 15px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  button:hover {
+    background-color: #003060;
+  }
+  .results {
+    margin-top: 20px;
+    background: white;
+    border-radius: 6px;
+    padding: 15px;
+    box-shadow: 0 0 8px rgba(0,0,0,0.1);
+    max-height: 400px;
+    overflow-y: auto;
+  }
+  .race-entry {
+    border-bottom: 1px solid #ddd;
+    padding: 10px 0;
+  }
+  .race-entry:last-child {
+    border-bottom: none;
+  }
+  .race-date {
+    font-weight: bold;
+    color: #004080;
+  }
+  .error {
+    color: red;
+    margin-top: 10px;
+  }
+  .saved-searches {
+    margin-top: 20px;
+    background: white;
+    padding: 10px;
+    border-radius: 6px;
+    box-shadow: 0 0 6px rgba(0,0,0,0.1);
+  }
+  .saved-searches h3 {
+    margin-top: 0;
+    color: #004080;
+  }
+  .saved-searches button {
+    width: auto;
+    margin-right: 8px;
+    margin-top: 6px;
+    padding: 6px 12px;
+    font-size: 0.9rem;
+  }
+  @media (max-width: 480px) {
+    body {
+      margin: 10px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<h1>Horse Racing Historical Search</h1>
+
+<form id="searchForm">
+  <label for="year">Year</label>
+  <input type="number" id="year" name="year" min="1997" max="2025" placeholder="e.g. 2023" required />
+
+  <label for="track">Track / Course</label>
+  <input type="text" id="track" name="track" placeholder="e.g. Ascot" />
+
+  <label for="horse">Horse Name</label>
+  <input type="text" id="horse" name="horse" placeholder="e.g. Enable" />
+
+  <label for="trainer">Trainer</label>
+  <input type="text" id="trainer" name="trainer" placeholder="e.g. A P O'Brien" />
+
+  <label for="jockey">Jockey</label>
+  <input type="text" id="jockey" name="jockey" placeholder="e.g. Ryan Moore" />
+
+  <button type="submit">Search</button>
+</form>
+
+<div class="error" id="errorMsg"></div>
+
+<div class="results" id="results" style="display:none;"></div>
+
+<div class="saved-searches" id="savedSearches" style="display:none;">
+  <h3>Saved Searches</h3>
+  <div id="savedList"></div>
+</div>
+
+<form id="saveForm" style="margin-top:15px; max-width: 650px; margin-left:auto; margin-right:auto;">
+  <input type="text" id="saveName" placeholder="Name this search to save" style="width:70%; padding:8px; font-size:1rem;" />
+  <button type="button" id="saveBtn" style="width:28%;">Save Search</button>
+</form>
+
+<script>
+  (function(){
+    const form = document.getElementById('searchForm');
+    const resultsDiv = document.getElementById('results');
+    const errorMsg = document.getElementById('errorMsg');
+    const saveBtn = document.getElementById('saveBtn');
+    const saveNameInput = document.getElementById('saveName');
+    const savedSearchesDiv = document.getElementById('savedSearches');
+    const savedListDiv = document.getElementById('savedList');
+
+    let lastSearchParams = null; // Store last search params for saving
+
+    // Validate and sanitize input helper
+    function sanitizeInput(str) {
+      return str.replace(/[<>\/\\'"]/g, '').trim();
+    }
+
+    // Load saved searches from localStorage
+    function loadSavedSearches() {
+      const saved = JSON.parse(localStorage.getItem('horseRacingSavedSearches') || '{}');
+      if (Object.keys(saved).length === 0) {
+        savedSearchesDiv.style.display = 'none';
+        savedListDiv.innerHTML = '';
+        return;
+      }
+      savedSearchesDiv.style.display = 'block';
+      savedListDiv.innerHTML = '';
+      for (const key in saved) {
+        const btnLoad = document.createElement('button');
+        btnLoad.textContent = `Load: ${key}`;
+        btnLoad.addEventListener('click', () => loadSearch(key));
+        const btnDelete = document.createElement('button');
+        btnDelete.textContent = 'Delete';
+        btnDelete.style.backgroundColor = '#c00';
+        btnDelete.style.color = 'white';
+        btnDelete.addEventListener('click', () => deleteSearch(key));
+        const container = document.createElement('div');
+        container.style.marginBottom = '6px';
+        container.appendChild(btnLoad);
+        container.appendChild(btnDelete);
+        savedListDiv.appendChild(container);
+      }
+    }
+
+    // Save current search
+    saveBtn.addEventListener('click', () => {
+      if (!lastSearchParams) {
+        errorMsg.textContent = 'Please perform a search first before saving.';
+        return;
+      }
+      const name = sanitizeInput(saveNameInput.value);
+      if (!name) {
+        errorMsg.textContent = 'Please enter a valid name to save the search.';
+        return;
+      }
+      errorMsg.textContent = '';
+      const saved = JSON.parse(localStorage.getItem('horseRacingSavedSearches') || '{}');
+      saved[name] = lastSearchParams;
+      localStorage.setItem('horseRacingSavedSearches', JSON.stringify(saved));
+      saveNameInput.value = '';
+      loadSavedSearches();
+      alert(`Search "${name}" saved.`);
+    });
+
+    // Load a saved search
+    function loadSearch(name) {
+      const saved = JSON.parse(localStorage.getItem('horseRacingSavedSearches') || '{}');
+      if (!saved[name]) {
+        alert('Saved search not found.');
+        return;
+      }
+      const params = saved[name];
+      document.getElementById('year').value = params.year || '';
+      document.getElementById('track').value = params.track || '';
+      document.getElementById('horse').value = params.horse || '';
+      document.getElementById('trainer').value = params.trainer || '';
+      document.getElementById('jockey').value = params.jockey || '';
+      performSearch(params);
+    }
+
+    // Delete a saved search
+    function deleteSearch(name) {
+      if (!confirm(`Delete saved search "${name}"?`)) return;
+      const saved = JSON.parse(localStorage.getItem('horseRacingSavedSearches') || '{}');
+      delete saved[name];
+      localStorage.setItem('horseRacingSavedSearches', JSON.stringify(saved));
+      loadSavedSearches();
+    }
+
+    // Perform search with given params
+    async function performSearch(params) {
+      errorMsg.textContent = '';
+      resultsDiv.style.display = 'none';
+      resultsDiv.innerHTML = '';
+
+      // Validate year
+      if (!params.year || params.year < 1997 || params.year > new Date().getFullYear()) {
+        errorMsg.textContent = 'Please enter a valid year between 1997 and current year.';
+        return;
+      }
+
+      // Build query string for backend
+      let query = `year=${encodeURIComponent(params.year)}`;
+      if(params.track) query += `&track=${encodeURIComponent(params.track)}`;
+      if(params.horse) query += `&horse=${encodeURIComponent(params.horse)}`;
+      if(params.trainer) query += `&trainer=${encodeURIComponent(params.trainer)}`;
+      if(params.jockey) query += `&jockey=${encodeURIComponent(params.jockey)}`;
+
+      try {
+        const response = await fetch(`/api/races?${query}`, { method: 'GET' });
+        if(!response.ok) throw new Error(`Server error: ${response.status}`);
+
+        const data = await response.json();
+
+        if(!data || !data.results || data.results.length === 0){
+          resultsDiv.style.display = 'block';
+          resultsDiv.innerHTML = '<p>No races found matching your criteria.</p>';
+          return;
+        }
+
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = data.results.map(race => `
+          <div class="race-entry">
+            <div class="race-date">${new Date(race.race_date).toLocaleDateString()}</div>
+            <div><strong>Track:</strong> ${race.course_name}</div>
+            <div><strong>Race:</strong> ${race.race_name}</div>
+            <div><strong>Winner:</strong> ${race.winner_name}</div>
+            <div><strong>Position:</strong> ${race.position}</div>
+            <div><strong>Odds:</strong> ${race.odds_decimal}</div>
+            <div><strong>Jockey:</strong> ${race.jockey_name}</div>
+            <div><strong>Trainer:</strong> ${race.trainer_name}</div>
+            <div><strong>Going:</strong> ${race.going}</div>
+            <div><strong>Distance:</strong> ${race.distance_yards} yards</div>
+          </div>
+        `).join('');
+
+      } catch(err) {
+        errorMsg.textContent = 'Error fetching race data: ' + err.message;
+      }
+    }
+
+    // On form submit
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const params = {
+        year: sanitizeInput(form.year.value),
+        track: sanitizeInput(form.track.value),
+        horse: sanitizeInput(form.horse.value),
+        trainer: sanitizeInput(form.trainer.value),
+        jockey: sanitizeInput(form.jockey.value)
+      };
+      lastSearchParams = params;
+      performSearch(params);
+    });
+
+    // Initialize saved searches on load
+    loadSavedSearches();
+  })();
+</script>
+
+</body>
+</html>
+2. Backend Proxy (Node.js + Express) with Caching and Extended Filters
+// server.js
+const express = require('express');
+const fetch = require('node-fetch');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Your Racing API credentials (store securely in environment variables)
+const API_USERNAME = process.env.RACING_API_USERNAME;
+const API_PASSWORD = process.env.RACING_API_PASSWORD;
+
+if (!API_USERNAME || !API_PASSWORD) {
+  console.error('Please set RACING_API_USERNAME and RACING_API_PASSWORD environment variables');
+  process.exit(1);
+}
+
+// Simple in-memory cache: key -> { timestamp, data }
+const cache = {};
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes cache TTL
+
+app.use(express.static('public')); // Serve frontend files if needed
+
+// Helper: build cache key from query params
+function buildCacheKey(params) {
+  return Object.entries(params)
+    .sort()
+    .map(([k,v]) => `${k}=${v.toLowerCase()}`)
+    .join('&');
+}
+
+// Sanitize input function
+function sanitize(str) {
+  if (!str) return '';
+  return str.replace(/[<>\/\\'"]/g, '').trim();
+}
+
+app.get('/api/races', async (req, res) => {
+  try {
+    // Sanitize inputs
+    const year = sanitize(req.query.year);
+    const track = sanitize(req.query.track);
+    const horse = sanitize(req.query.horse);
+    const trainer = sanitize(req.query.trainer);
+    const jockey = sanitize(req.query.jockey);
+
+    if (!year || isNaN(year) || year < 1997 || year > new Date().getFullYear()) {
+      return res.status(400).json({ error: 'Valid year parameter is required' });
+    }
+
+    // Build cache key
+    const cacheKey = buildCacheKey({year, track, horse, trainer, jockey});
+
+    // Return cached if fresh
+    if (cache[cacheKey] && (Date.now() - cache[cacheKey].timestamp < CACHE_TTL_MS)) {
+      return res.json(cache[cacheKey].data);
+    }
+
+    // Build API URL with filters (adjust according to The Racing API docs)
+    let apiUrl = `https://api.theracingapi.com/v2/races?year=${encodeURIComponent(year)}`;
+
+    if (track) apiUrl += `&course_name=${encodeURIComponent(track)}`;
+    if (horse) apiUrl += `&horse_name=${encodeURIComponent(horse)}`;
+    if (trainer) apiUrl += `&trainer_name=${encodeURIComponent(trainer)}`;
+    if (jockey) apiUrl += `&jockey_name=${encodeURIComponent(jockey)}`;
+
+    // Call The Racing API with Basic Auth
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${API_USERNAME}:${API_PASSWORD}`).toString('base64'),
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return res.status(response.status).json({ error: errorText });
+    }
+
+    const json = await response.json();
+
+    // Map relevant fields for frontend
+    const results = (json.data || []).map(race => {
+      // Find winner runner
+      const winnerRunner = (race.runners || []).find(r => r.position === '1') || {};
+      return {
+        race_date: race.date || race.race_date || 'N/A',
+        course_name: race.course || race.course_name || 'N/A',
+        race_name: race.race_name || race.type || 'N/A',
+        winner_name: winnerRunner.horse || winnerRunner.horse_name || 'N/A',
+        position: winnerRunner.position || 'N/A',
+        odds_decimal: winnerRunner.sp_dec || 'N/A',
+        jockey_name: winnerRunner.jockey || winnerRunner.jockey_name || 'N/A',
+        trainer_name: winnerRunner.trainer || winnerRunner.trainer_name || 'N/A',
+        going: race.going || 'N/A',
+        distance_yards: race.dist_y || race.distance_yards || 'N/A'
+      };
+    });
+
+    const resultData = { results };
+
+    // Cache the response
+    cache[cacheKey] = {
+      timestamp: Date.now(),
+      data: resultData
+    };
+
+    res.json(resultData);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+3. Deployment & Security Notes
+
+    Environment Variables: Store your RACING_API_USERNAME and RACING_API_PASSWORD securely (e.g., in .env file or hosting platform secrets).
+
+    HTTPS: Serve frontend and backend over HTTPS.
+
+    Input Sanitization: Implemented basic sanitization on both frontend and backend.
+
+    Caching: In-memory cache reduces API calls and improves performance; for production consider Redis or similar.
+
+    Rate Limiting: Consider adding rate limiting middleware to backend to protect API usage.
+
+    CORS: Configure CORS headers if frontend and backend are on different domains.
+
+Summary
+
+This upgraded widget and backend:
+
+    Support searching by year, track, horse, trainer, and jockey
+
+    Allow users to save and load searches locally in their browser
+
+    Cache API responses on the backend for 5 minutes to reduce load
+
+    Provide a clean, mobile-friendly UI with error handling
+
+    Keep your API credentials secure on the backend
+If you want, I can help you with:
+
+    Adding more filters or advanced search options
+
+    Exporting results (CSV, PDF)
+
+    Deployment scripts or Docker setup
+
+    UI/UX improvements or integration support
+
+Would you like me to assist with any of these next?

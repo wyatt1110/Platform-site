@@ -1,0 +1,675 @@
+ Below is the full integrated, secure, lightweight code for your Personal Gambling Risk Assessment Tool, using the exact content you approved. It includes:
+
+    20-question quiz with scoring (0–3 per question)
+
+    Risk feedback with 4 risk levels and tailored advice
+
+    Regular self-check checklist
+
+    UK-specific help resources
+
+    Secure input sanitization
+
+    No data storage or transmission
+
+    Mobile-friendly, accessible, and easy to integrate as a widget or modal
+Full Integrated Code
+HTML + CSS + JavaScript (all in one for easy embedding)
+<!-- Personal Gambling Risk Assessment Tool -->
+<div id="risk-assessment-tool" class="risk-tool" role="region" aria-label="Personal Gambling Risk Assessment Tool" style="max-width:480px; margin:auto; font-family:Arial, sans-serif; background:#f8f9fa; border-radius:8px; padding:1em; box-shadow:0 2px 8px rgba(0,0,0,0.15); color:#2b3a4a;">
+  <h2 style="text-align:center;">Personal Gambling Risk Assessment</h2>
+
+  <!-- Intro -->
+  <section id="intro" tabindex="0">
+    <p>This confidential quiz helps you understand if your gambling habits might be risky or out of control. There are no right or wrong answers - answer honestly for the most accurate result. No information is stored or shared.</p>
+    <button type="button" onclick="startQuiz()" aria-label="Start the gambling risk assessment quiz" style="padding:0.5em 1em; font-size:1rem; cursor:pointer;">Start Quiz</button>
+  </section>
+
+  <!-- Quiz Form -->
+  <form id="quiz-form" style="display:none;" aria-live="polite" aria-atomic="true" onsubmit="return false;">
+    <!-- Questions will be injected here -->
+  </form>
+
+  <!-- Result -->
+  <section id="result" style="display:none;" tabindex="0" aria-live="polite" aria-atomic="true"></section>
+
+  <!-- Checklist -->
+  <section id="checklist" style="display:none;" tabindex="0" aria-live="polite" aria-atomic="true">
+    <h3>Regular Self-Check Checklist</h3>
+    <p>Use this checklist regularly to monitor your gambling behaviour. Tick any statements that apply to you:</p>
+    <ul style="list-style:none; padding-left:0;">
+      <li><label><input type="checkbox" id="cl1"> I have chased losses in the last week.</label></li>
+      <li><label><input type="checkbox" id="cl2"> I have borrowed money to gamble.</label></li>
+      <li><label><input type="checkbox" id="cl3"> I have hidden my gambling from others.</label></li>
+      <li><label><input type="checkbox" id="cl4"> I have felt anxious or guilty about gambling.</label></li>
+      <li><label><input type="checkbox" id="cl5"> Gambling has affected my work, studies, or relationships.</label></li>
+      <li><label><input type="checkbox" id="cl6"> I have gambled for longer or with more money than I intended.</label></li>
+      <li><label><input type="checkbox" id="cl7"> I have felt unable to control my gambling urges.</label></li>
+      <li><label><input type="checkbox" id="cl8"> I have lied about my gambling activities.</label></li>
+      <li><label><input type="checkbox" id="cl9"> I have used gambling to escape from problems or worries.</label></li>
+      <li><label><input type="checkbox" id="cl10"> I have felt that gambling is taking over my life.</label></li>
+    </ul>
+    <p>If you tick any of these regularly, it may be time to seek support.</p>
+    <button type="button" onclick="showHelp()" style="padding:0.5em 1em; font-size:1rem; cursor:pointer;">I Need Help</button>
+    <button type="button" onclick="restartTool()" style="padding:0.5em 1em; font-size:1rem; cursor:pointer; margin-left:0.5em;">Restart Assessment</button>
+  </section>
+
+  <!-- Help Section -->
+  <section id="help" style="display:none;" tabindex="0" aria-live="polite" aria-atomic="true">
+    <h3>UK Support and Help Resources</h3>
+    <p>If you feel you need help, these organisations offer free, confidential support:</p>
+    <ul>
+      <li><a href="https://www.gamcare.org.uk/" target="_blank" rel="noopener noreferrer">GamCare</a> – Free information, advice, and counselling for gambling problems.<br>Helpline: <strong>0808 8020 133</strong></li>
+      <li><a href="https://www.begambleaware.org/" target="_blank" rel="noopener noreferrer">GambleAware</a> – Provides self-help tools, advice, and treatment information.</li>
+      <li><a href="https://www.nhs.uk/live-well/addiction-support/gambling-addiction/" target="_blank" rel="noopener noreferrer">NHS Gambling Addiction Services</a> – Support and treatment through the NHS.</li>
+      <li><a href="https://www.gamblersanonymous.org.uk/" target="_blank" rel="noopener noreferrer">Gamblers Anonymous UK</a> – Peer support groups for problem gamblers.</li>
+      <li>National Gambling Helpline: <strong>0808 8020 133</strong></li>
+    </ul>
+    <button type="button" onclick="restartTool()" style="padding:0.5em 1em; font-size:1rem; cursor:pointer;">Restart Assessment</button>
+  </section>
+</div>
+
+<style>
+  .risk-tool h2, .risk-tool h3 {
+    color: #2b3a4a;
+  }
+  .risk-tool button {
+    background-color: #007bff;
+    border: none;
+    color: white;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+  }
+  .risk-tool button:hover, .risk-tool button:focus {
+    background-color: #0056b3;
+    outline: none;
+  }
+  .risk-tool label {
+    cursor: pointer;
+  }
+  .risk-tool input[type="radio"] {
+    margin-right: 0.5em;
+  }
+  .risk-tool .risk-low {
+    color: #28a745;
+    font-weight: bold;
+  }
+  .risk-tool .risk-moderate {
+    color: #ffc107;
+    font-weight: bold;
+  }
+  .risk-tool .risk-high {
+    color: #dc3545;
+    font-weight: bold;
+  }
+  .risk-tool .risk-veryhigh {
+    color: #b21f2d;
+    font-weight: bold;
+  }
+  /* Responsive */
+  @media (max-width: 520px) {
+    #risk-assessment-tool {
+      padding: 1em 0.5em;
+      width: 95%;
+    }
+  }
+</style>
+
+<script>
+  (function() {
+    // Quiz questions and answers
+    const questions = [
+      "How often do you gamble more money than you can afford to lose?",
+      "How often do you find it difficult to stop gambling once you have started?",
+      "How often do you feel restless or irritable when trying to cut down or stop gambling?",
+      "How often do you gamble to try to win back money you have lost?",
+      "How often do you lie to family or friends about how much you gamble?",
+      "How often do you borrow money or sell things to fund your gambling?",
+      "How often has gambling caused you financial problems?",
+      "How often do you feel guilty or ashamed about your gambling?",
+      "How often has gambling affected your work, studies, or daily responsibilities?",
+      "How often do you gamble to escape from worries or problems?",
+      "How often do you chase losses by gambling more?",
+      "How often do you gamble for longer periods than you intended?",
+      "How often do you think about gambling when you should be doing other things?",
+      "How often do you feel unable to control your gambling urges?",
+      "How often do you hide your gambling activities from others?",
+      "How often do you feel anxious or depressed because of your gambling?",
+      "How often do you feel that gambling has negatively affected your relationships?",
+      "How often do you gamble despite wanting to stop or cut down?",
+      "How often do you need to gamble with larger amounts of money to get the same excitement?",
+      "How often do you feel that gambling has taken over your life?"
+    ];
+
+    // Answer options and their scores
+    const answers = ["Never", "Rarely", "Sometimes", "Often"];
+
+    let currentQuestionIndex = 0;
+    let userAnswers = [];
+
+    // Sanitize text to prevent XSS
+    function sanitize(str) {
+      return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+        return ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+          '/': '&#x2F;',
+          '`': '&#x60;',
+          '=': '&#x3D;'
+        })[s];
+      });
+    }
+
+    // Start the quiz
+    window.startQuiz = function() {
+      currentQuestionIndex = 0;
+      userAnswers = [];
+      document.getElementById('intro').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('checklist').style.display = 'none';
+      document.getElementById('help').style.display = 'none';
+      document.getElementById('quiz-form').style.display = 'block';
+      showQuestion();
+    };
+
+    // Show current question
+    function showQuestion() {
+      const q = sanitize(questions[currentQuestionIndex]);
+      let html = `<h3>Question ${currentQuestionIndex + 1} of ${questions.length}</h3>`;
+      html += `<p>${q}</p>`;
+      answers.forEach((ans, i) => {
+        html += `<label><input type="radio" name="answer" value="${i}" required> ${sanitize(ans)}</label><br>`;
+      });
+      html += `<div style="margin-top:1em;">`;
+      if (currentQuestionIndex > 0) {
+        html += `<button type="button" onclick="prevQuestion()" style="margin-right:0.5em; padding:0.4em 1em; cursor:pointer;">Previous</button>`;
+      }
+      html += `<button type="button" onclick="nextQuestion()" style="padding:0.4em 1em; cursor:pointer;">${currentQuestionIndex === questions.length - 1 ? 'Submit' : 'Next'}</button>`;
+      html += `</div>`;
+      const form = document.getElementById('quiz-form');
+      form.innerHTML = html;
+
+      // If user already answered this question, pre-select the radio button
+      if (userAnswers[currentQuestionIndex] !== undefined) {
+        const radios = form.elements['answer'];
+        if (radios.length) {
+          radios[userAnswers[currentQuestionIndex]].checked = true;
+        } else if (userAnswers[currentQuestionIndex] === 0) {
+          radios.checked = true;
+        }
+      }
+
+      // Focus first radio button for accessibility
+      const firstRadio = form.querySelector('input[type=radio]');
+      if (firstRadio) firstRadio.focus();
+    }
+
+    // Go to previous question
+    window.prevQuestion = function() {
+      saveAnswer();
+      if (currentQuestionIndex > 0) {
+        currentQuestionIndex--;
+        showQuestion();
+      }
+    };
+
+    // Save current answer and go to next question or show result
+    window.nextQuestion = function() {
+      if (!saveAnswer()) return; // validation failed
+      if (currentQuestionIndex < questions.length - 1) {
+        currentQuestionIndex++;
+        showQuestion();
+      } else {
+        showResult();
+      }
+    };
+
+    // Save the selected answer for current question
+    function saveAnswer() {
+      const form = document.getElementById('quiz-form');
+      const selected = form.querySelector('input[name="answer"]:checked');
+      if (!selected) {
+        alert('Please select an answer before continuing.');
+        return false;
+      }
+      userAnswers[currentQuestionIndex] = parseInt(selected.value, 10);
+      return true;
+    }
+
+    // Show the result based on total score
+    function showResult() {
+      document.getElementById('quiz-form').style.display = 'none';
+
+      const totalScore = userAnswers.reduce((sum, val) => sum + val, 0);
+
+      let riskLevel = "";
+      let riskClass = "";
+      let feedback = "";
+
+      if (totalScore <= 15) {
+        riskLevel = "Low Risk";
+        riskClass = "risk-low";
+        feedback = `Your answers suggest your gambling is currently low risk. Keep monitoring your habits and gamble responsibly.`;
+      } else if (totalScore <= 30) {
+        riskLevel = "Moderate Risk";
+        riskClass = "risk-moderate";
+        feedback = `Your answers show some warning signs. Consider reviewing your gambling habits and using support tools if needed.`;
+      } else if (totalScore <= 45) {
+        riskLevel = "High Risk";
+        riskClass = "risk-high";
+        feedback = `Your answers suggest you may have a gambling problem. It’s important to seek help or talk to someone you trust.`;
+      } else {
+        riskLevel = "Very High Risk";
+        riskClass = "risk-veryhigh";
+        feedback = `Your answers indicate that your gambling is likely out of control. Please seek professional help immediately.`;
+      }
+
+      const resultDiv = document.getElementById('result');
+      let html = `<h3>Your Risk Assessment Result</h3>`;
+      html += `<p>Your total score is <strong>${totalScore}</strong>.</p>`;
+      html += `<p class="${riskClass}" style="font-weight:bold; font-size:1.2em;">${riskLevel}</p>`;
+      html += `<p>${sanitize(feedback)}</p>`;
+      html += `<button type="button" onclick="showChecklist()" style="padding:0.5em 1em; cursor:pointer; margin-right:0.5em;">Regular Self-Check</button>`;
+      html += `<button type="button" onclick="showHelp()" style="padding:0.5em 1em; cursor:pointer;">Get Help</button>`;
+
+      resultDiv.innerHTML = html;
+      resultDiv.style.display = 'block';
+      resultDiv.focus();
+    }
+
+    // Show checklist section
+    window.showChecklist = function() {
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('checklist').style.display = 'block';
+      document.getElementById('help').style.display = 'none';
+      document.getElementById('quiz-form').style.display = 'none';
+      document.getElementById('checklist').focus();
+    };
+
+    // Show help section
+    window.showHelp = function() {
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('checklist').style.display = 'none';
+      document.getElementById('help').style.display = 'block';
+      document.getElementById('quiz-form').style.display = 'none';
+      document.getElementById('help').focus();
+    };
+
+    // Restart the entire tool
+    window.restartTool = function() {
+      currentQuestionIndex = 0;
+      userAnswers = [];
+      document.getElementById('intro').style.display = 'block';
+      document.getElementById('quiz-form').style.display = 'none';
+      document.getElementById('result').style.display = 'none';
+      document.getElementById('checklist').style.display = 'none';
+      document.getElementById('help').style.display = 'none';
+      document.getElementById('intro').focus();
+    };
+  })();
+</script>
+How to Use This Code
+
+    Embed this entire code block where you want the widget on your site or forum.
+
+    It requires no external dependencies.
+
+    All logic runs client-side; no data is stored or sent anywhere.
+
+    The quiz is fully keyboard accessible and mobile responsive.
+
+    You can style further by modifying the CSS inside the <style> tag.
+
+    The buttons and inputs have ARIA attributes and focus management for accessibility.
+Based on your context - a link on your site leading users to a separate page with the quiz, which is complete and unlikely to change - and considering the most common, up-to-date frameworks in 2025, the best choice for integration is React.js.
+Why React?
+
+    Most widely used frontend framework worldwide in 2024–2025 (Statista 
+
+, expert analyses
+
+    )
+
+    Huge ecosystem, community, and library support
+
+    Component-based architecture fits well for embedding self-contained widgets like your quiz
+
+    Scalable and maintainable for future site growth
+
+    Easy to deploy as a standalone page or part of a larger React app
+
+    Many modern UK gambling and health websites use React or similar frameworks
+
+What This Means for Your Quiz
+
+    Your quiz will be converted into a React functional component
+
+    It will be a single page app (SPA) or a page within a React site
+
+    Users click your button/link, navigate to the quiz page built with React
+
+    The quiz logic, questions, scoring, feedback, checklist, and help resources will be encapsulated in this component
+
+    React handles rendering, state management, and accessibility cleanly
+
+    The code will remain lightweight and secure, with no data leaving the client
+
+Next Steps
+
+I will now provide the full React component code for your exact quiz content, including:
+
+    20 questions with answers scored 0–3
+
+    Risk scoring and feedback with four risk levels
+
+    Regular self-check checklist
+
+    UK help resources
+
+    Accessibility and security best practices
+
+    No external dependencies beyond React itself
+
+You can then integrate this React component as a page in your site’s React app or serve it standalone with minimal setup.
+Here is the complete React functional component for your Personal Gambling Risk Assessment Quiz widget, fully implementing your 20 questions, scoring, feedback, checklist, and UK help resources exactly as you requested. It is a self-contained component you can place on a React page.
+import React, { useState, useEffect, useRef } from 'react';
+
+const questions = [
+  "How often do you gamble more money than you can afford to lose?",
+  "How often do you find it difficult to stop gambling once you have started?",
+  "How often do you feel restless or irritable when trying to cut down or stop gambling?",
+  "How often do you gamble to try to win back money you have lost?",
+  "How often do you lie to family or friends about how much you gamble?",
+  "How often do you borrow money or sell things to fund your gambling?",
+  "How often has gambling caused you financial problems?",
+  "How often do you feel guilty or ashamed about your gambling?",
+  "How often has gambling affected your work, studies, or daily responsibilities?",
+  "How often do you gamble to escape from worries or problems?",
+  "How often do you chase losses by gambling more?",
+  "How often do you gamble for longer periods than you intended?",
+  "How often do you think about gambling when you should be doing other things?",
+  "How often do you feel unable to control your gambling urges?",
+  "How often do you hide your gambling activities from others?",
+  "How often do you feel anxious or depressed because of your gambling?",
+  "How often do you feel that gambling has negatively affected your relationships?",
+  "How often do you gamble despite wanting to stop or cut down?",
+  "How often do you need to gamble with larger amounts of money to get the same excitement?",
+  "How often do you feel that gambling has taken over your life?"
+];
+
+const answerOptions = ["Never", "Rarely", "Sometimes", "Often"];
+
+const riskLevels = [
+  { maxScore: 15, label: "Low Risk", className: "risk-low", advice: "Your answers suggest your gambling is currently low risk. Keep monitoring your habits and gamble responsibly." },
+  { maxScore: 30, label: "Moderate Risk", className: "risk-moderate", advice: "Your answers show some warning signs. Consider reviewing your gambling habits and using support tools if needed." },
+  { maxScore: 45, label: "High Risk", className: "risk-high", advice: "Your answers suggest you may have a gambling problem. It’s important to seek help or talk to someone you trust." },
+  { maxScore: 60, label: "Very High Risk", className: "risk-veryhigh", advice: "Your answers indicate that your gambling is likely out of control. Please seek professional help immediately." }
+];
+
+const checklistItems = [
+  "I have chased losses in the last week.",
+  "I have borrowed money to gamble.",
+  "I have hidden my gambling from others.",
+  "I have felt anxious or guilty about gambling.",
+  "Gambling has affected my work, studies, or relationships.",
+  "I have gambled for longer or with more money than I intended.",
+  "I have felt unable to control my gambling urges.",
+  "I have lied about my gambling activities.",
+  "I have used gambling to escape from problems or worries.",
+  "I have felt that gambling is taking over my life."
+];
+
+function sanitize(str) {
+  // Basic sanitization to prevent XSS in displayed text
+  return String(str).replace(/[&<>"'`=\/]/g, function (s) {
+    return ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+      '/': '&#x2F;',
+      '`': '&#x60;',
+      '=': '&#x3D;'
+    })[s];
+  });
+}
+
+export default function GamblingRiskAssessment() {
+  const [currentQuestion, setCurrentQuestion] = useState(0);
+  const [answers, setAnswers] = useState(Array(questions.length).fill(null));
+  const [showResult, setShowResult] = useState(false);
+  const [showChecklist, setShowChecklist] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+  const [checklistChecked, setChecklistChecked] = useState(Array(checklistItems.length).fill(false));
+
+  const resultRef = useRef(null);
+  const checklistRef = useRef(null);
+  const helpRef = useRef(null);
+
+  // Focus management for accessibility
+  useEffect(() => {
+    if (showResult && resultRef.current) resultRef.current.focus();
+    if (showChecklist && checklistRef.current) checklistRef.current.focus();
+    if (showHelp && helpRef.current) helpRef.current.focus();
+  }, [showResult, showChecklist, showHelp]);
+
+  function handleAnswerSelect(index) {
+    const newAnswers = [...answers];
+    newAnswers[currentQuestion] = index;
+    setAnswers(newAnswers);
+  }
+
+  function handleNext() {
+    if (answers[currentQuestion] === null) {
+      alert("Please select an answer before continuing.");
+      return;
+    }
+    if (currentQuestion < questions.length - 1) {
+      setCurrentQuestion(currentQuestion + 1);
+    } else {
+      setShowResult(true);
+    }
+  }
+
+  function handlePrevious() {
+    if (currentQuestion > 0) {
+      setCurrentQuestion(currentQuestion - 1);
+    }
+  }
+
+  function calculateScore() {
+    return answers.reduce((acc, val) => acc + (val !== null ? val : 0), 0);
+  }
+
+  function getRiskLevel(score) {
+    return riskLevels.find(level => score <= level.maxScore);
+  }
+
+  function toggleChecklistItem(index) {
+    const newChecked = [...checklistChecked];
+    newChecked[index] = !newChecked[index];
+    setChecklistChecked(newChecked);
+  }
+
+  function restart() {
+    setAnswers(Array(questions.length).fill(null));
+    setCurrentQuestion(0);
+    setShowResult(false);
+    setShowChecklist(false);
+    setShowHelp(false);
+    setChecklistChecked(Array(checklistItems.length).fill(false));
+  }
+
+  // Render
+
+  if (showHelp) {
+    return (
+      <section
+        tabIndex={-1}
+        ref={helpRef}
+        aria-live="polite"
+        aria-label="Help and support resources"
+        style={styles.container}
+      >
+        <h2>UK Support and Help Resources</h2>
+        <p>If you feel you need help, these organisations offer free, confidential support:</p>
+        <ul>
+          <li>
+            <a href="https://www.gamcare.org.uk/" target="_blank" rel="noopener noreferrer">
+              GamCare
+            </a> – Free information, advice, and counselling for gambling problems.<br />
+            Helpline: <strong>0808 8020 133</strong>
+          </li>
+          <li>
+            <a href="https://www.begambleaware.org/" target="_blank" rel="noopener noreferrer">
+              GambleAware
+            </a> – Provides self-help tools, advice, and treatment information.
+          </li>
+          <li>
+            <a href="https://www.nhs.uk/live-well/addiction-support/gambling-addiction/" target="_blank" rel="noopener noreferrer">
+              NHS Gambling Addiction Services
+            </a> – Support and treatment through the NHS.
+          </li>
+          <li>
+            <a href="https://www.gamblersanonymous.org.uk/" target="_blank" rel="noopener noreferrer">
+              Gamblers Anonymous UK
+            </a> – Peer support groups for problem gamblers.
+          </li>
+          <li>National Gambling Helpline: <strong>0808 8020 133</strong></li>
+        </ul>
+        <button onClick={restart} style={styles.button}>Restart Assessment</button>
+      </section>
+    );
+  }
+
+  if (showChecklist) {
+    return (
+      <section
+        tabIndex={-1}
+        ref={checklistRef}
+        aria-live="polite"
+        aria-label="Regular self-check checklist"
+        style={styles.container}
+      >
+        <h2>Regular Self-Check Checklist</h2>
+        <p>Use this checklist regularly to monitor your gambling behaviour. Tick any statements that apply to you:</p>
+        <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+          {checklistItems.map((item, i) => (
+            <li key={i} style={{ marginBottom: '0.5em' }}>
+              <label>
+                <input
+                  type="checkbox"
+                  checked={checklistChecked[i]}
+                  onChange={() => toggleChecklistItem(i)}
+                  style={{ marginRight: '0.5em' }}
+                />
+                {sanitize(item)}
+              </label>
+            </li>
+          ))}
+        </ul>
+        <p>If you tick any of these regularly, it may be time to seek support.</p>
+        <button onClick={() => { setShowHelp(true); setShowChecklist(false); }} style={styles.button}>I Need Help</button>
+        <button onClick={restart} style={{ ...styles.button, marginLeft: '0.5em' }}>Restart Assessment</button>
+      </section>
+    );
+  }
+
+  if (showResult) {
+    const totalScore = calculateScore();
+    const risk = getRiskLevel(totalScore);
+    return (
+      <section
+        tabIndex={-1}
+        ref={resultRef}
+        aria-live="polite"
+        aria-label="Risk assessment result"
+        style={styles.container}
+      >
+        <h2>Your Risk Assessment Result</h2>
+        <p>Your total score is <strong>{totalScore}</strong>.</p>
+        <p className={risk.className} style={{ fontWeight: 'bold', fontSize: '1.2em', marginBottom: '0.5em' }}>
+          {risk.label}
+        </p>
+        <p>{sanitize(risk.advice)}</p>
+        <button onClick={() => { setShowChecklist(true); setShowResult(false); }} style={styles.button}>Regular Self-Check</button>
+        <button onClick={() => { setShowHelp(true); setShowResult(false); }} style={{ ...styles.button, marginLeft: '0.5em' }}>Get Help</button>
+      </section>
+    );
+  }
+
+  // Quiz in progress
+  return (
+    <section aria-label="Personal Gambling Risk Assessment Quiz" style={styles.container}>
+      <h2>Personal Gambling Risk Assessment</h2>
+      <p>This confidential quiz helps you understand if your gambling habits might be risky or out of control. There are no right or wrong answers - answer honestly for the most accurate result. No information is stored or shared.</p>
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          handleNext();
+        }}
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <fieldset>
+          <legend style={{ fontWeight: 'bold', marginBottom: '0.5em' }}>
+            Question {currentQuestion + 1} of {questions.length}
+          </legend>
+          <p>{sanitize(questions[currentQuestion])}</p>
+          {answerOptions.map((option, idx) => (
+            <label key={idx} style={{ display: 'block', marginBottom: '0.3em', cursor: 'pointer' }}>
+              <input
+                type="radio"
+                name="answer"
+                value={idx}
+                checked={answers[currentQuestion] === idx}
+                onChange={() => handleAnswerSelect(idx)}
+                required
+                style={{ marginRight: '0.5em' }}
+              />
+              {sanitize(option)}
+            </label>
+          ))}
+        </fieldset>
+        <div style={{ marginTop: '1em' }}>
+          {currentQuestion > 0 && (
+            <button type="button" onClick={handlePrevious} style={{ ...styles.button, marginRight: '0.5em' }}>
+              Previous
+            </button>
+          )}
+          <button type="submit" style={styles.button}>
+            {currentQuestion === questions.length - 1 ? "Submit" : "Next"}
+          </button>
+        </div>
+      </form>
+    </section>
+  );
+}
+
+const styles = {
+  container: {
+    maxWidth: 480,
+    margin: 'auto',
+    fontFamily: "'Arial', sans-serif",
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    padding: '1em 1.5em',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+    color: '#2b3a4a',
+    outline: 'none'
+  },
+  button: {
+    backgroundColor: '#007bff',
+    border: 'none',
+    color: 'white',
+    borderRadius: 4,
+    padding: '0.5em 1em',
+    fontSize: '1rem',
+    cursor: 'pointer',
+    transition: 'background-color 0.3s ease'
+  }
+};
